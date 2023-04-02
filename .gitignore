@@ -3,3 +3,4 @@ f
 *.cmo
 parser.ml
 parser.mli
+parser.output
