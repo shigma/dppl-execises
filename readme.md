@@ -13,3 +13,4 @@ Exercises for my DDPL (Design Principles of Programming Languages) course.
 - [let](./fullsimple.let/)
 - [match](./fullsimple.match/)
 - [natlist](./fullsimple.natlist/)
+- [rec-fix](./fullsimple.rec-fix/)
