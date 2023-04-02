@@ -359,6 +359,20 @@ let rec printtm_Term outer ctx t = match t with
        print_space(); pr "in"; print_space();
        printtm_Term false (addname ctx x) t2;
        cbox()
+  | TmPLet(fi, xs, t1, t2) ->
+      obox0();
+      pr "let {";
+      let rec print xs = match xs with
+        | x::x'::rest -> pr x; pr ","; print (x'::rest);
+        | x::[] -> pr x;
+        | [] -> pr "";
+      in print xs;
+      pr "} = "; 
+      printtm_Term false ctx t1;
+      print_space(); pr "in"; print_space();
+      let ctx' = List.fold_left (fun ctx x -> addname ctx x) ctx xs
+      in printtm_Term false ctx' t2;
+      cbox()
   | TmAbs(fi,x,tyT1,t2) ->
       (let (ctx',x') = (pickfreshname ctx x) in
          obox(); pr "lambda ";
