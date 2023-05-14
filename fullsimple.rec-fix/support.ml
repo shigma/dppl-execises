@@ -23,7 +23,7 @@ let printInfo =
     FI(f,l,c) ->
       print_string f; 
       print_string ":"; 
-      print_int l; print_string "."; 
+      print_int l; print_string ":"; 
       print_int c; print_string ":"
   | UNKNOWN ->
       print_string "<Unknown file and line>: "
