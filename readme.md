@@ -16,3 +16,7 @@ Exercises for my DDPL (Design Principles of Programming Languages) course.
 - [natlist](./fullsimple.natlist/)
 - [rec-fix](./fullsimple.rec-fix/)
 - [rec-no-fix](./fullref.rec-no-fix/)
+- [subtype](./fullref.subtype/)
+- [fold](./fullisorec.fold/)
+- [dep](./fullomega.dep/)
+- [infer](./fullfomsub.infer/)

@@ -367,6 +367,18 @@ and meet ctx tyS tyT =
   | _ -> 
       raise Not_found
 
+let rec find ctx tyS tyT =
+  if tyeqv ctx tyS tyT then TyTop else
+  let tyS = simplifyty ctx tyS in
+  let tyT = simplifyty ctx tyT in
+  match (tyS, tyT) with
+  | (_,TyVar(i,_)) -> tyS
+  | (TyArr(tyS1,tyS2), TyArr(tyT1,tyT2)) ->
+      let tyU1 = TyTop (* find ctx tyT1 tyS1 *) in
+      let tyU2 = find ctx tyS2 tyT2 in (
+        meet ctx tyU1 tyU2)
+  | (_,_) -> raise Not_found
+
 (* ------------------------   TYPING  ------------------------ *)
 
 let rec tyfree ctx tyX tyT =
@@ -403,9 +415,13 @@ let rec typeof ctx t =
             (match tyT12 with
               | TyArr(tyT21, tyT22) ->
                 if tyfree ctx tyX1 tyT21 then TyAll(tyX1, tyT11, tyT22)
-                else typeSubstTop tyT2 tyT22
-                  (* if subtype ctx tyT2 tyT21 then typeSubstTop tyT2 tyT22
-                  else error fi "parameter type mismatch 2" *)
+                else (
+                  let ctx' = addbinding ctx tyX1 (TyVarBind tyT11) in
+                  try typeSubstTop (find ctx' tyT2 tyT21) tyT22
+                  with Not_found | NoRuleApplies -> (
+                    pr "tyT2: "; printty ctx tyT2; pr "\n";
+                    pr "tyT21: "; printty ctx' tyT21; pr "\n";
+                    error fi "parameter type cannot be inferred"))
               | _ -> error fi "arrow type expected")
         | _ -> error fi "arrow type expected")
   | TmAscribe(fi,t1,tyT) ->
