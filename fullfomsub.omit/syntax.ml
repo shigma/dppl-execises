@@ -400,7 +400,7 @@ let rec printtm_Term outer ctx t = match t with
   | TmAbs(fi,x,tyT1,t2) ->
       (let (ctx',x') = (pickfreshname ctx x) in
          obox(); pr "lambda ";
-         pr x'; pr ":"; printty_Type false ctx tyT1; pr ".";
+         pr x'; pr ": "; printty_Type false ctx tyT1; pr ".";
          if (small t2) && not outer then break() else print_space();
          printtm_Term outer ctx' t2;
          cbox())

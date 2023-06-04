@@ -3,9 +3,9 @@ open Syntax
 open Support.Error
 open Support.Pervasive
 
-(* ------------------------   EVALUATION  ------------------------ *)
-
 exception NoRuleApplies
+
+(* ------------------------   EVALUATION  ------------------------ *)
 
 let rec isnumericval ctx t = match t with
   | TmZero(_) -> true
@@ -25,11 +25,19 @@ let rec isval ctx t = match t with
   | TmFloat _  -> true
   | _ -> false
 
+let rec tmfree ctx x t = match t with
+  | TmVar(_,y,_) -> false
+  | TmAbs(_,y,_,t2) ->
+      if x = y then true else tmfree ctx x t2
+  | _ -> true
+
 let rec eval1 ctx t = match t with
   | TmApp(fi,TmAbs(_,x,tyT11,t12),v2) when isval ctx v2 ->
       termSubstTop v2 t12
-  | TmApp(fi, TmTAbs(_,_,_,t11), v2) ->
-      TmApp(fi, t11, v2)
+  | TmApp(fi, TmTAbs(fi2,x,tyT11,t1), t2) ->
+      let t = eval1 ctx (TmApp(fi, t1, t2)) in
+      if tmfree ctx x t then t
+      else TmTAbs(fi2, x, tyT11, t)
   | TmApp(fi,v1,t2) when isval ctx v1 ->
       let t2' = eval1 ctx t2 in
       TmApp(fi, v1, t2')
@@ -59,7 +67,7 @@ let rec eval1 ctx t = match t with
       TmRecord(fi, fields')
   | TmProj(fi, TmRecord(_, fields), l) ->
       (try List.assoc l fields
-       with Not_found -> raise NoRuleApplies)
+      with Not_found -> raise NoRuleApplies)
   | TmProj(fi, t1, l) ->
       let t1' = eval1 ctx t1 in
       TmProj(fi, t1', l)
@@ -114,8 +122,8 @@ let rec eval1 ctx t = match t with
       TmLet(fi, x, t1', t2) 
   | TmFix(fi,v1) as t when isval ctx v1 ->
       (match v1 with
-       | TmAbs(_,_,_,t12) -> termSubstTop t t12
-       | _ -> raise NoRuleApplies)
+      | TmAbs(_,_,_,t12) -> termSubstTop t t12
+      | _ -> raise NoRuleApplies)
   | TmFix(fi,t1) ->
       let t1' = eval1 ctx t1
       in TmFix(fi,t1')
@@ -249,45 +257,44 @@ let checkkindstar fi ctx tyT =
 (* ------------------------   SUBTYPING  ------------------------ *)
 
 let rec promote ctx t = match t with
- | TyVar(i,_) ->
-     (match getbinding dummyinfo ctx i with
-       | TyVarBind(tyT) -> tyT
-       | _ -> raise NoRuleApplies)
- | TyApp(tyS,tyT) -> TyApp(promote ctx tyS,tyT)
- | _ -> raise NoRuleApplies
+  | TyVar(i,_) ->
+      (match getbinding dummyinfo ctx i with
+        | TyVarBind(tyT) -> tyT
+        | _ -> raise NoRuleApplies)
+  | TyApp(tyS,tyT) -> TyApp(promote ctx tyS,tyT)
+  | _ -> raise NoRuleApplies
 
 let rec subtype ctx tyS tyT =
-   tyeqv ctx tyS tyT ||
-   let tyS = simplifyty ctx tyS in
-   let tyT = simplifyty ctx tyT in
-   match (tyS,tyT) with
-   | (TyVar(_,_),_) -> subtype ctx (promote ctx tyS) tyT
-   | (_,TyTop) -> 
-       true
-   | (TyAll(tyX1,tyS1,tyS2),TyAll(_,tyT1,tyT2)) ->
-        (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
-        let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
-        subtype ctx1 tyS2 tyT2
-   | (TyArr(tyS1,tyS2),TyArr(tyT1,tyT2)) ->
-       (subtype ctx tyT1 tyS1) && (subtype ctx tyS2 tyT2)
-   | (TyRecord(fS), TyRecord(fT)) ->
-       List.for_all
-         (fun (li,tyTi) -> 
-            try let tySi = List.assoc li fS in
-                subtype ctx tySi tyTi
-            with Not_found -> false)
-         fT
-   | (TySome(tyX1,tyS1,tyS2),TySome(_,tyT1,tyT2)) ->
-        (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
-        let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
-        subtype ctx1 tyS2 tyT2
-   | (TyAbs(tyX,knKS1,tyS2),TyAbs(_,knKT1,tyT2)) ->
-        (=) knKS1 knKT1 &&
-        let ctx = addbinding ctx tyX (TyVarBind(maketop knKS1)) in
-        subtype ctx tyS2 tyT2
-   | (TyApp(_,_),_) -> subtype ctx (promote ctx tyS) tyT
-   | (_,_) -> 
-       false
+  tyeqv ctx tyS tyT ||
+  let tyS = simplifyty ctx tyS in
+  let tyT = simplifyty ctx tyT in
+  match (tyS,tyT) with
+  | (TyVar(_,_),_) -> subtype ctx (promote ctx tyS) tyT
+  | (_,TyTop) -> 
+      true
+  | (TyAll(tyX1,tyS1,tyS2),TyAll(_,tyT1,tyT2)) ->
+      (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
+      let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
+      subtype ctx1 tyS2 tyT2
+  | (TyArr(tyS1,tyS2),TyArr(tyT1,tyT2)) ->
+      (subtype ctx tyT1 tyS1) && (subtype ctx tyS2 tyT2)
+  | (TyRecord(fS), TyRecord(fT)) ->
+      List.for_all
+        (fun (li,tyTi) -> 
+          try let tySi = List.assoc li fS in
+              subtype ctx tySi tyTi
+          with Not_found -> false)
+        fT
+  | (TySome(tyX1,tyS1,tyS2),TySome(_,tyT1,tyT2)) ->
+      (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
+      let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
+      subtype ctx1 tyS2 tyT2
+  | (TyAbs(tyX,knKS1,tyS2),TyAbs(_,knKT1,tyT2)) ->
+      (=) knKS1 knKT1 &&
+      let ctx = addbinding ctx tyX (TyVarBind(maketop knKS1)) in
+      subtype ctx tyS2 tyT2
+  | (TyApp(_,_),_) -> subtype ctx (promote ctx tyS) tyT
+  | (_,_) -> false
 
 let rec lcst ctx tyS =
   let tyS = simplifyty ctx tyS in
@@ -362,6 +369,21 @@ and meet ctx tyS tyT =
 
 (* ------------------------   TYPING  ------------------------ *)
 
+let rec tyfree ctx tyX tyT =
+  match tyT with
+  | TyVar(i,_) -> false
+  | TyArr(tyT1,tyT2) -> tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
+  | TyApp(tyT1,tyT2) -> tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
+  | TyAbs(tyY,knK,tyT2) -> 
+      if tyY = tyX then true else tyfree ctx tyX tyT2
+  | TyAll(tyY,tyT1,tyT2) -> 
+      if tyY = tyX then true else tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
+  | TySome(tyY,tyT1,tyT2) -> 
+      if tyY = tyX then true else tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
+  | TyRecord(fieldtys) -> 
+      List.for_all (fun (li,tyTi) -> tyfree ctx tyX tyTi) fieldtys
+  | _ -> true
+
 let rec typeof ctx t =
   match t with
   | TmVar(fi,i,_) -> getTypeFromContext fi ctx i
@@ -378,12 +400,13 @@ let rec typeof ctx t =
             if subtype ctx tyT2 tyT11 then tyT12
             else error fi "parameter type mismatch"
         | TyAll(tyX1, tyT11, tyT12) ->
-            if subtype ctx tyT2 tyT11 then
-              match typeSubstTop tyT2 tyT12 with
-                | TyArr(tyT21, tyT22) -> tyT22
-                (* | TyAll(tyX2, tyT21, tyT22) -> typeSubstTop tyT2 tyT22 *)
-                | _ -> error fi "arrow type expected"
-            else error fi "parameter type mismatch"
+            (match tyT12 with
+              | TyArr(tyT21, tyT22) ->
+                if tyfree ctx tyX1 tyT21 then TyAll(tyX1, tyT11, tyT22)
+                else typeSubstTop tyT2 tyT22
+                  (* if subtype ctx tyT2 tyT21 then typeSubstTop tyT2 tyT22
+                  else error fi "parameter type mismatch 2" *)
+              | _ -> error fi "arrow type expected")
         | _ -> error fi "arrow type expected")
   | TmAscribe(fi,t1,tyT) ->
       checkkindstar fi ctx tyT;

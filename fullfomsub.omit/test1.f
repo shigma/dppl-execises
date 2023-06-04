@@ -7,10 +7,10 @@ id 1;
 f = lambda x: Nat. lambda Y. lambda y: Y. y;
 g = lambda Y. lambda x: Nat. lambda y: Y. y;
 f 1;
-f 1 true;
+g 1;
+g 1 true;
 
 Pair = lambda X. lambda Y. All R. (X -> Y -> R) -> R;
-
 pair =
   lambda X. lambda x: X.
     lambda Y. lambda y: Y.
