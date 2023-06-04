@@ -197,7 +197,7 @@ let rec tyeqv ctx tyS tyT =
 
 let rec typeof ctx t =
   match t with
-    TmAscribe(fi,t1,tyT) ->
+  | TmAscribe(fi,t1,tyT) ->
      if tyeqv ctx (typeof ctx t1) tyT then
        tyT
      else
