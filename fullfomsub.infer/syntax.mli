@@ -51,14 +51,14 @@ type term =
   | TmFix of info * term
 
 type binding =
-    NameBind 
+  | NameBind 
   | VarBind of ty
   | TyVarBind of ty
   | TyAbbBind of ty * (kind option)
   | TmAbbBind of term * (ty option)
 
 type command =
-    Import of string
+  | Import of string
   | Eval of info * term
   | Bind of info * string * binding
   | SomeBind of info * string * string * term
@@ -81,6 +81,13 @@ val termSubstTop: term -> term -> term
 val typeShift : int -> ty -> ty
 val typeSubstTop: ty -> ty -> ty
 val tytermSubstTop: ty -> term -> term
+
+(* Formatting *)
+val formattm: context -> term -> string
+val formattm_ATerm: context -> term -> string
+val formatty : context -> ty -> string
+val formatkn : context -> kind -> string
+val fmbinding : context -> binding -> string
 
 (* Printing *)
 val printtm: context -> term -> unit

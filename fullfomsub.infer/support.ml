@@ -20,7 +20,7 @@ let printInfo =
   (* In the text of the book, file positions in error messages are replaced
      with the string "Error:" *)
   function
-    FI(f,l,c) ->
+    FI(f, l, c) ->
       print_string f; 
       print_string ":"; 
       print_int l; print_string ":"; 
@@ -28,11 +28,11 @@ let printInfo =
   | UNKNOWN ->
       print_string "<Unknown file and line>: "
 
-let errfAt fi f = errf(fun()-> printInfo fi; print_space(); f())
+let errfAt fi f = errf(fun () -> printInfo fi; print_space(); f())
 
-let err s = errf (fun()-> print_string "Error: "; print_string s; print_newline())
+let err s = errf (fun () -> print_string "Error: "; print_string s; print_newline())
 
-let error fi s = errfAt fi (fun()-> print_string s; print_newline())
+let error fi s = errfAt fi (fun () -> print_string s; print_newline())
 
 let warning s =
   print_string "Warning: "; print_string s;
