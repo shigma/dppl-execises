@@ -16,10 +16,7 @@ snd [Nat] [Bool] pr;
 
 List = lambda X. All R. (X -> R -> R) -> R -> R; 
 
-diverge =
-lambda X.
-  lambda _: Unit.
-  fix (lambda x: X. x);
+diverge = lambda X. lambda _: Unit. fix (lambda x: X. x);
 
 nil = lambda X.
       (lambda R. lambda c: X -> R -> R. lambda n: R. n)

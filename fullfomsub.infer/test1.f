@@ -20,3 +20,12 @@ snd = lambda X. lambda Y. lambda p: Pair X Y. p (lambda x: X. lambda y: Y. y);
 pr = pair 0 false;
 fst pr;
 snd pr;
+
+List = lambda X. All R. (X -> R -> R) -> R -> R; 
+
+nil = lambda X. (lambda R. lambda c: X -> R -> R. lambda n: R. n) as List X;
+
+cons = lambda X. lambda hd: X. lambda tl: List X.
+  (lambda R. lambda c: X -> R -> R. lambda n: R. c hd (tl c n)) as List X; 
+
+isnil = lambda X. lambda l: List X. l (lambda hd: X. lambda tl: Bool. false) true; 

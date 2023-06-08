@@ -16,6 +16,7 @@ type ty =
   | TyString
   | TyRecord of (string * ty) list
   | TyTop
+  | TyBot
   | TyArr of ty * ty
   | TySome of string * ty * ty
   | TyBool

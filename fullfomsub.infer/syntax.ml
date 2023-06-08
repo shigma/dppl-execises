@@ -17,6 +17,7 @@ type ty =
   | TyString
   | TyRecord of (string * ty) list
   | TyTop
+  | TyBot
   | TyArr of ty * ty
   | TySome of string * ty * ty
   | TyBool
@@ -117,6 +118,7 @@ let tymap onvar c tyT =
     | TyString -> TyString
     | TyRecord(fieldtys) -> TyRecord(List.map (fun (li, tyTi) -> (li, walk c tyTi)) fieldtys)
     | TyTop -> TyTop
+    | TyBot -> TyBot
     | TySome(tyX, tyT1, tyT2) -> TySome(tyX, walk c tyT1, walk (c+1) tyT2)
     | TyBool -> TyBool
     | TyNat -> TyNat
@@ -326,6 +328,7 @@ and formatty_AType ctx tyT = match tyT with
         | f::rest -> pf i f ^ ", " ^ p (i + 1) rest
       in "{" ^ p 1 fields ^ "}"
   | TyTop -> "Top"
+  | TyBot -> "Bot"
   | TySome(tyX, tyT1, tyT2) ->
       let (ctx1, tyX) = pickfreshname ctx tyX in
       "{Some " ^ tyX ^ fmoty ctx tyT1 ^ ",  " ^ formatty_Type ctx1 tyT2 ^ "}";

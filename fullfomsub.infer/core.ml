@@ -269,8 +269,8 @@ let rec subtype ctx tyS tyT =
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
   | (TyVar(_, _), _) -> subtype ctx (promote ctx tyS) tyT
-  | (_, TyTop) -> 
-      true
+  | (_, TyTop) -> true
+  | (TyBot, _) -> true
   | (TyAll(tyX1, tyS1, tyS2, _), TyAll(_, tyT1, tyT2, _)) ->
       (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
       let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
@@ -306,6 +306,8 @@ let rec join ctx tyS tyT =
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
+  | (_, TyBot) -> tyS
+  | (TyBot, _) -> tyT
   | (TyAll(tyX, tyS1, tyS2, a1), TyAll(_, tyT1, tyT2, a2)) ->
       if not ((=) a1 a2 && subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then TyTop
       else 
@@ -326,8 +328,7 @@ let rec join ctx tyS tyT =
   | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
       (try TyArr(meet ctx tyS1 tyT1, join ctx tyS2 tyT2)
         with Not_found -> TyTop)
-  | _ -> 
-      TyTop
+  | _ -> TyTop
 
 and meet ctx tyS tyT =
   if subtype ctx tyS tyT then tyS else 
@@ -370,48 +371,59 @@ and meet ctx tyS tyT =
 
 let rec printTbl ctx tbl = match tbl with
   | [] -> ()
-  | (a, b)::ls -> pr ("[table] " ^ string_of_int a ^ ": "); printty ctx b; pr "\n"; printTbl ctx ls
+  | (a, x, (tyB, tyT))::ls -> pr ("[debug:table] " ^ formatty ctx tyB ^ " <: " ^ (string_of_int a) ^ " <: " ^ formatty ctx tyT ^ "\n"); printTbl ctx ls
 
-let tblShift d tbl = List.map (fun (i, x, ty) -> (i+d, x, ty)) tbl
+let tblShift d tbl = List.map (fun (i, x, (tyB, tyT)) -> (i+d, x, (tyB, tyT))) tbl
 
-let addToTbl tbl x ty = (0, x, ty)::(tblShift 1 tbl)
+let addToTbl tbl x ty = (0, x, (TyBot, ty))::(tblShift 1 tbl)
+
+let isintbl tbl i = List.exists (fun (j, _, _) -> (=) i j) tbl
+
+let walkTbl tbl i fn = List.map (fun (j, x, ty) -> if (=) i j then (j, "", fn ty) else (j, x, ty)) tbl
 
 let rec substTbl ty tbl =
   match tbl with
   | [] -> ty
-  | (i, tyX, tyS)::ls when tyX = "" -> substTbl (typeSubst tyS i ty) ls
-  | (i, tyX, tyS)::ls -> substTbl ty ls
+  | (i, x, (tyB, tyT))::ls when x = "" -> substTbl (typeSubst tyB i ty) ls
+  | (i, x, _)::ls -> substTbl ty ls
 
 let rec typeauto ctx tbl ty =
   match tbl with
   | [] -> ty
-  | (i, tyX, _)::ls when tyX = "" -> typeauto ctx ls (typeShift (-1) ty)
-  | (i, tyX, tyS)::ls -> typeauto ctx ls (TyAll(tyX, tyS, ty, true))
+  | (i, x, _)::ls when x = "" -> typeauto ctx ls (typeShift (-1) ty)
+  | (i, x, (tyB, tyT))::ls -> typeauto ctx ls (TyAll(x, tyT, ty, true))
 
 let rec infer ctx tyS tyT tbl =
   if tyeqv ctx tyS tyT then tbl else
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
+  (* pr ("[debug:infer] " ^ formatty ctx tyS ^ " <: " ^ formatty ctx tyT ^ "\n"); *)
   match (tyS, tyT) with
-  | (_, TyVar(i, _)) ->
-      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n"); *)
-      (* pr ("[debug] var: " ^ string_of_int i ^ "\n"); *)
-      List.map (fun (j, x, ty) -> if (=) i j then (j, "", meet ctx ty tyS) else (j, x, ty)) tbl
+  | (_, TyTop) -> tbl
+  | (TyBot, _) -> tbl
+  | (TyVar(i, _), _) when isintbl tbl i ->
+      (* walkTbl tbl i (fun (tyB, tyT) -> if subtype ctx tyB tyS then (tyB, meet ctx tyS tyT) else (pr "111"; printty ctx tyB; printty ctx tyS; raise Not_found)) *)
+      walkTbl tbl i (fun (tyB, tyT) -> (tyB, meet ctx tyS tyT))
+  | (_, TyVar(i, _)) when isintbl tbl i ->
+      (* walkTbl tbl i (fun (tyB, tyT) -> if subtype ctx tyS tyT then (join ctx tyS tyB, tyT) else (pr "222"; printty ctx tyS; printty ctx tyT; raise Not_found)) *)
+      walkTbl tbl i (fun (tyB, tyT) -> (join ctx tyS tyB, tyT))
   | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
       infer ctx tyS2 tyT2 (infer ctx tyT1 tyS1 tbl)
   | (TyAll(tyX1, tyS1, tyS2, _), TyAll(_, tyT1, tyT2, _)) ->
-      if not (tyeqv ctx tyS1 tyT1) then raise Not_found;
+      if not (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then raise Not_found;
       let ctx' = addbinding ctx tyX1 (TyVarBind(tyT1)) in
       tblShift (-1) (infer ctx' tyS2 tyT2 (tblShift 1 tbl))
   | (_, _) ->
-      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n"); *)
-      raise Not_found
+      if subtype ctx tyS tyT then tbl
+      else raise Not_found
 
 let rec typeapp fi ctx tyS tyT tbl =
   match tyS with
   | TyArr(tyS1, tyS2) ->
       let tyT' = typeShift (List.length tbl) tyT in
-      let tbl' = infer ctx tyT' tyS1 tbl in
+      let tbl' = (try
+        infer ctx tyT' tyS1 tbl
+      with Not_found -> error fi ("cannot infer universal type parameter, expected " ^ formatty ctx tyS1 ^ ", received " ^ formatty ctx tyT')) in
       let tyS1' = substTbl tyS1 tbl' in
       if not (subtype ctx tyT' tyS1') then error fi ("parameter type mismatch, expected " ^ formatty ctx tyS1 ^ ", received " ^ formatty ctx tyT');
       typeauto ctx tbl' (substTbl tyS2 tbl')
@@ -446,7 +458,7 @@ let rec typeof ctx t =
   | TmTApp(fi, t1, tyT2) ->
       let tyT1 = typeof ctx t1 in
       (match lcst ctx tyT1 with
-         | TyAll(_, tyT11, tyT12, _) ->
+         | TyAll(_, tyT11, tyT12, false) ->
              if not(subtype ctx tyT2 tyT11) then
                   error fi ("type parameter type mismatch, expected " ^ formatty ctx tyT11 ^ ", received " ^ formatty ctx tyT2);
              typeSubstTop tyT2 tyT12
