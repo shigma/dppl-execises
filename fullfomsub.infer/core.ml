@@ -336,7 +336,7 @@ and meet ctx tyS tyT =
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
   | (TyAll(tyX, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
-      if not(subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then
+      if not (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then
         raise Not_found
       else 
         let ctx' = addbinding ctx tyX (TyVarBind(tyT1)) in
@@ -366,41 +366,58 @@ and meet ctx tyS tyT =
   | _ -> 
       raise Not_found
 
-let rec infer ctx tyS tyT =
-  if tyeqv ctx tyS tyT then TyTop else
+(* ------------------------   TYPING  ------------------------ *)
+
+let rec printTbl ctx tbl = match tbl with
+  | [] -> ()
+  | (a, b)::ls -> pr ("[table] " ^ string_of_int a ^ ": "); printty ctx b; pr "\n"; printTbl ctx ls
+
+let tblShift d tbl = List.map (fun (i, ty) -> (i+d, ty)) tbl
+
+let addToTbl tbl ty = (0, ty)::(tblShift 1 tbl)
+
+let rec substTbl ty tbl =
+  match tbl with
+  | [] -> ty
+  | (i, tyS)::ls -> substTbl (typeSubst tyS i ty) ls
+
+let rec infer ctx tyS tyT tbl =
+  if tyeqv ctx tyS tyT then tbl else
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
-  | (_, TyVar(i, _)) -> tyS
+  | (_, TyVar(i, _)) ->
+      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n");
+      pr ("[debug] var: " ^ string_of_int i ^ "\n"); *)
+      List.map (fun (j, ty) -> if (=) i j then (j, meet ctx ty tyS) else (j, ty)) tbl
   | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
-      let tyU1 = infer ctx tyT1 tyS1 in
-      let tyU2 = infer ctx tyS2 tyT2 in
-      meet ctx tyU1 tyU2
+      infer ctx tyS2 tyT2 (infer ctx tyT1 tyS1 tbl)
   | (TyAll(tyX1, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
       if not (tyeqv ctx tyS1 tyT1) then raise Not_found;
       let ctx' = addbinding ctx tyX1 (TyVarBind(tyT1)) in
-      infer ctx' tyS2 tyT2
+      tblShift (-1) (infer ctx' tyS2 tyT2 (tblShift 1 tbl))
   | (_, _) ->
-    pr ("[debug] S: " ^ formatty ctx tyS ^ "\n");
-    pr ("[debug] T: " ^ formatty ctx tyT ^ "\n");
-    raise Not_found
+      (* pr ("[debug] S: " ^ formatty ctx tyS ^ "\n");
+      pr ("[debug] T: " ^ formatty ctx tyT ^ "\n"); *)
+      raise Not_found
 
-(* ------------------------   TYPING  ------------------------ *)
-
-let rec tyfree ctx tyX tyT =
-  match tyT with
-  | TyVar(i, _) -> false
-  | TyArr(tyT1, tyT2) -> tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
-  | TyApp(tyT1, tyT2) -> tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
-  | TyAbs(tyY, knK, tyT2) -> 
-      if tyY = tyX then true else tyfree ctx tyX tyT2
-  | TyAll(tyY, tyT1, tyT2) -> 
-      if tyY = tyX then true else tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
-  | TySome(tyY, tyT1, tyT2) -> 
-      if tyY = tyX then true else tyfree ctx tyX tyT1 && tyfree ctx tyX tyT2
-  | TyRecord(fieldtys) -> 
-      List.for_all (fun (li, tyTi) -> tyfree ctx tyX tyTi) fieldtys
-  | _ -> true
+let rec typeofapp fi ctx tyS tyT tbl =
+  match tyS with
+  | TyArr(tyS1, tyS2) ->
+      let tyT' = typeShift (List.length tbl) tyT in
+      let tbl' = infer ctx tyT' tyS1 tbl in
+      let tyS1' = substTbl tyS1 tbl' in
+      let tyS2' = substTbl tyS2 tbl' in
+      (* pr ("[debug] tyT: " ^ formatty ctx tyT' ^ "\n");
+      pr ("[debug] tyS1': " ^ formatty ctx tyS1' ^ "\n"); *)
+      if subtype ctx tyT' tyS1' then typeShift (-List.length tbl) tyS2'
+      else error fi ("parameter type mismatch, expected " ^ formatty ctx tyS1 ^ ", received " ^ formatty ctx tyT')
+  | TyAll(tyX1, tyS1, tyS2) ->
+      let binding = TyVarBind tyS1 in
+      let ctx' = addbinding ctx tyX1 binding in
+      let tbl' = addToTbl tbl tyS1 in
+      typeofapp fi ctx' tyS2 tyT tbl'
+  | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyS)
 
 let rec typeof ctx t =
   match t with
@@ -413,21 +430,7 @@ let rec typeof ctx t =
   | TmApp(fi, t1, t2) ->
       let tyT1 = typeof ctx t1 in
       let tyT2 = typeof ctx t2 in
-      (match lcst ctx tyT1 with
-        | TyArr(tyT11, tyT12) ->
-            if subtype ctx tyT2 tyT11 then tyT12
-            else error fi "parameter type mismatch"
-        | TyAll(tyX1, tyT11, tyT12) ->
-            (match tyT12 with
-              | TyArr(tyT21, tyT22) ->
-                if tyfree ctx tyX1 tyT21 then TyAll(tyX1, tyT11, tyT22)
-                else (
-                  let ctx' = addbinding ctx tyX1 (TyVarBind tyT11) in
-                  try typeSubstTop (typeShift (-1) (infer ctx' (typeShift 1 tyT2) tyT21)) tyT22
-                  with Not_found | NoRuleApplies ->
-                    error fi ("cannot infer universal type parameter, expected " ^ formatty ctx' tyT21 ^ ", received " ^ formatty ctx tyT2))
-              | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyT12))
-        | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyT1))
+      typeofapp fi ctx (lcst ctx tyT1) tyT2 []
   | TmAscribe(fi, t1, tyT) ->
       checkkindstar fi ctx tyT;
       let tyT1 = typeof ctx t1 in

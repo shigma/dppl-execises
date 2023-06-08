@@ -64,7 +64,7 @@ type command =
   | SomeBind of info * string * string * term
 
 (* Contexts *)
-type context
+type context = (string * binding) list
 val emptycontext : context 
 val ctxlength : context -> int
 val addbinding : context -> string -> binding -> context
@@ -78,7 +78,8 @@ val getTypeFromContext : info -> context -> int -> ty
 (* Shifting and substitution *)
 val termShift: int -> term -> term
 val termSubstTop: term -> term -> term
-val typeShift : int -> ty -> ty
+val typeShift: int -> ty -> ty
+val typeSubst: ty -> int -> ty -> ty
 val typeSubstTop: ty -> ty -> ty
 val tytermSubstTop: ty -> term -> term
 

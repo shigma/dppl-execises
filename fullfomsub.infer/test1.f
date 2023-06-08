@@ -18,5 +18,5 @@ fst = lambda X. lambda Y. lambda p: Pair X Y. p (lambda x: X. lambda y: Y. x);
 snd = lambda X. lambda Y. lambda p: Pair X Y. p (lambda x: X. lambda y: Y. y);
 
 pr = pair 0 false;
-fst [Nat] pr;
+fst pr;
 snd pr;
