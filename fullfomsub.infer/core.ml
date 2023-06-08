@@ -366,17 +366,24 @@ and meet ctx tyS tyT =
   | _ -> 
       raise Not_found
 
-let rec find ctx tyS tyT =
+let rec infer ctx tyS tyT =
   if tyeqv ctx tyS tyT then TyTop else
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
   | (_, TyVar(i, _)) -> tyS
   | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
-      let tyU1 = TyTop (* find ctx tyT1 tyS1 *) in
-      let tyU2 = find ctx tyS2 tyT2 in (
-        meet ctx tyU1 tyU2)
-  | (_, _) -> raise Not_found
+      let tyU1 = infer ctx tyT1 tyS1 in
+      let tyU2 = infer ctx tyS2 tyT2 in
+      meet ctx tyU1 tyU2
+  | (TyAll(tyX1, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
+      if not (tyeqv ctx tyS1 tyT1) then raise Not_found;
+      let ctx' = addbinding ctx tyX1 (TyVarBind(tyT1)) in
+      infer ctx' tyS2 tyT2
+  | (_, _) ->
+    pr ("[debug] S: " ^ formatty ctx tyS ^ "\n");
+    pr ("[debug] T: " ^ formatty ctx tyT ^ "\n");
+    raise Not_found
 
 (* ------------------------   TYPING  ------------------------ *)
 
@@ -416,19 +423,16 @@ let rec typeof ctx t =
                 if tyfree ctx tyX1 tyT21 then TyAll(tyX1, tyT11, tyT22)
                 else (
                   let ctx' = addbinding ctx tyX1 (TyVarBind tyT11) in
-                  try typeSubstTop (find ctx' tyT2 tyT21) tyT22
-                  with Not_found | NoRuleApplies -> (
-                    pr "tyT2: "; printty ctx tyT2; pr "\n";
-                    pr "tyT21: "; printty ctx' tyT21; pr "\n";
-                    error fi "parameter type cannot be inferred"))
-              | _ -> error fi "arrow type expected")
-        | _ -> error fi "arrow type expected")
+                  try typeSubstTop (typeShift (-1) (infer ctx' (typeShift 1 tyT2) tyT21)) tyT22
+                  with Not_found | NoRuleApplies ->
+                    error fi ("cannot infer universal type parameter, expected " ^ formatty ctx' tyT21 ^ ", received " ^ formatty ctx tyT2))
+              | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyT12))
+        | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyT1))
   | TmAscribe(fi, t1, tyT) ->
       checkkindstar fi ctx tyT;
-      if subtype ctx (typeof ctx t1) tyT then
-        tyT
-      else
-        error fi "body of as-term does not have the expected type"
+      let tyT1 = typeof ctx t1 in
+      if subtype ctx tyT1 tyT then tyT
+      else error fi ("body of as-term does not have the expected type " ^ formatty ctx tyT ^ ", received " ^ formatty ctx tyT1)
   | TmTAbs(fi, tyX, tyT1, t2) ->
       let ctx = addbinding ctx tyX (TyVarBind(tyT1)) in
       let tyT2 = typeof ctx t2 in

@@ -15,7 +15,7 @@ pair =
       (lambda R. lambda p: X -> Y -> R. p x y) as Pair X Y;
 
 fst = lambda X. lambda Y. lambda p: Pair X Y. p (lambda x: X. lambda y: Y. x);
-snd = lambda X. lambda Y. lambda p: Pair X Y. p [Y] (lambda x: X. lambda y: Y. y);
+snd = lambda X. lambda Y. lambda p: Pair X Y. p (lambda x: X. lambda y: Y. y);
 
 pr = pair 0 false;
 fst [Nat] pr;

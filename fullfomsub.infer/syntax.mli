@@ -84,14 +84,12 @@ val tytermSubstTop: ty -> term -> term
 
 (* Formatting *)
 val formattm: context -> term -> string
-val formattm_ATerm: context -> term -> string
 val formatty : context -> ty -> string
 val formatkn : context -> kind -> string
 val fmbinding : context -> binding -> string
 
 (* Printing *)
 val printtm: context -> term -> unit
-val printtm_ATerm: bool -> context -> term -> unit
 val printty : context -> ty -> unit
 val printkn : context -> kind -> unit
 val prbinding : context -> binding -> unit
