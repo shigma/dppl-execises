@@ -13,7 +13,7 @@ type ty =
   | TyVar of int * int
   | TyAbs of string * kind * ty
   | TyApp of ty * ty
-  | TyAll of string * ty * ty
+  | TyAll of string * ty * ty * bool
   | TyString
   | TyRecord of (string * ty) list
   | TyTop
@@ -113,7 +113,7 @@ let tymap onvar c tyT =
     | TyVar(x, n) -> onvar c x n
     | TyAbs(tyX, knK1, tyT2) -> TyAbs(tyX, knK1, walk (c+1) tyT2)
     | TyApp(tyT1, tyT2) -> TyApp(walk c tyT1, walk c tyT2)
-    | TyAll(tyX, tyT1, tyT2) -> TyAll(tyX, walk c tyT1, walk (c+1) tyT2)
+    | TyAll(tyX, tyT1, tyT2, auto) -> TyAll(tyX, walk c tyT1, walk (c+1) tyT2, auto)
     | TyString -> TyString
     | TyRecord(fieldtys) -> TyRecord(List.map (fun (li, tyTi) -> (li, walk c tyTi)) fieldtys)
     | TyTop -> TyTop
@@ -289,9 +289,9 @@ let rec formatty_Type ctx tyT = match tyT with
   | TyAbs(tyX, knK1, tyT2) ->
       let (ctx', x') = (pickfreshname ctx tyX) in
       "lambda " ^ x' ^ fmokn ctx knK1 ^ ". " ^ formatty_Type ctx' tyT2;
-  | TyAll(tyX, tyT1, tyT2) ->
+  | TyAll(tyX, tyT1, tyT2, auto) ->
       let (ctx1, tyX) = (pickfreshname ctx tyX) in
-      "All " ^ tyX ^ fmoty ctx tyT1 ^ ". " ^ formatty_Type ctx1 tyT2;
+      (if auto then "Auto" else "All") ^ " " ^ tyX ^ fmoty ctx tyT1 ^ ". " ^ formatty_Type ctx1 tyT2;
   | tyT -> formatty_ArrowType ctx tyT
 
 and formatty_ArrowType ctx  tyT = match tyT with 

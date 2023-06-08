@@ -5,14 +5,14 @@ open Support.Error
 
 (* Data type definitions *)
 type kind = 
-    KnStar
+  | KnStar
   | KnArr of kind * kind
 
 type ty =
-    TyVar of int * int
+  | TyVar of int * int
   | TyAbs of string * kind * ty
   | TyApp of ty * ty
-  | TyAll of string * ty * ty
+  | TyAll of string * ty * ty * bool
   | TyString
   | TyRecord of (string * ty) list
   | TyTop

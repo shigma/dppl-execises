@@ -9,7 +9,7 @@ open Support.Pervasive
 open Syntax
 let rec addbinders tyT l = match l with
    [] -> tyT
- | (tyX,k)::rest -> TyAbs(tyX, k, addbinders tyT rest)%}
+ | (tyX, k)::rest -> TyAbs(tyX, k, addbinders tyT rest)%}
 
 /* ---------------------------------------------------------------------- */
 /* Preliminaries */
@@ -126,27 +126,27 @@ let rec addbinders tyT l = match l with
    by a semicolon. */
 toplevel :
     EOF
-      { fun ctx -> [],ctx }
+      { fun ctx -> [], ctx }
   | Command SEMI toplevel
       { fun ctx ->
-          let cmd,ctx = $1 ctx in
-          let cmds,ctx = $3 ctx in
-          cmd::cmds,ctx }
+          let cmd, ctx = $1 ctx in
+          let cmds, ctx = $3 ctx in
+          cmd::cmds, ctx }
 
 /* A top-level command */
 Command :
-    IMPORT STRINGV { fun ctx -> (Import($2.v)),ctx }
+    IMPORT STRINGV { fun ctx -> (Import($2.v)), ctx }
   | Term 
-      { fun ctx -> (let t = $1 ctx in Eval(tmInfo t,t)),ctx }
+      { fun ctx -> (let t = $1 ctx in Eval(tmInfo t, t)), ctx }
   | LCID Binder
-      { fun ctx -> ((Bind($1.i,$1.v,$2 ctx)), addname ctx $1.v) }
+      { fun ctx -> ((Bind($1.i, $1.v, $2 ctx)), addname ctx $1.v) }
   | UCID TyBinder
       { fun ctx -> ((Bind($1.i, $1.v, $2 ctx)), addname ctx $1.v) }
   | LCURLY UCID COMMA LCID RCURLY EQ Term
      { fun ctx ->
          let ctx1 = addname ctx $2.v in
          let ctx2 = addname ctx1 $4.v in
-         (SomeBind($1,$2.v,$4.v,$7 ctx), ctx2) }
+         (SomeBind($1, $2.v, $4.v, $7 ctx), ctx2) }
 
 /* Right-hand sides of top-level bindings */
 Binder :
@@ -167,7 +167,7 @@ ArrowKind :
 
 /* All type expressions */
 Type :
-    ArrowType
+  | ArrowType
                 { $1 }
   | LAMBDA UCID OKind DOT Type
       { fun ctx ->
@@ -176,7 +176,7 @@ Type :
   | ALL UCID OType DOT Type
       { fun ctx ->
           let ctx1 = addname ctx $2.v in
-          TyAll($2.v,$3 ctx,$5 ctx1) }
+          TyAll($2.v, $3 ctx, $5 ctx1, false) }
 
 /* Atomic types are those that never need extra parentheses */
 AType :
@@ -232,12 +232,12 @@ Term :
   | LAMBDA UCID OType DOT Term
       { fun ctx ->
           let ctx1 = addname ctx $2.v in
-          TmTAbs($1,$2.v,$3 ctx,$5 ctx1) }
+          TmTAbs($1, $2.v, $3 ctx, $5 ctx1) }
   | LET LCURLY UCID COMMA LCID RCURLY EQ Term IN Term
       { fun ctx ->
           let ctx1 = addname ctx $3.v in
           let ctx2 = addname ctx1 $5.v in
-          TmUnpack($1,$3.v,$5.v,$8 ctx,$10 ctx2) }
+          TmUnpack($1, $3.v, $5.v, $8 ctx, $10 ctx2) }
   | IF Term THEN Term ELSE Term
       { fun ctx -> TmIf($1, $2 ctx, $4 ctx, $6 ctx) }
   | LET LCID EQ Term IN Term
@@ -257,12 +257,12 @@ AppTerm :
       { fun ctx ->
           let e1 = $1 ctx in
           let e2 = $2 ctx in
-          TmApp(tmInfo e1,e1,e2) }
+          TmApp(tmInfo e1, e1, e2) }
   | AppTerm LSQUARE Type RSQUARE
       { fun ctx ->
           let t1 = $1 ctx in
           let t2 = $3 ctx in
-          TmTApp(tmInfo t1,t1,t2) }
+          TmTApp(tmInfo t1, t1, t2) }
   | SUCC PathTerm
       { fun ctx -> TmSucc($1, $2 ctx) }
   | PRED PathTerm
@@ -286,7 +286,7 @@ OKind :
      { $2 }
 
 AppType :
-    AppType AType { fun ctx -> TyApp($1 ctx,$2 ctx) }
+    AppType AType { fun ctx -> TyApp($1 ctx, $2 ctx) }
   | AType { $1 }
 
 AscribeTerm :
@@ -302,7 +302,7 @@ TyAbbArgs :
   | UCID OKind TyAbbArgs
       { fun b ctx ->
           let ctx' = (addname ctx $1.v) in
-          $3 (b@[($1.v,$2 ctx)]) ctx' }
+          $3 (b@[($1.v, $2 ctx)]) ctx' }
 
 TyBinder :
     /* empty */
@@ -311,7 +311,7 @@ TyBinder :
       { fun ctx -> TyVarBind(maketop ($2 ctx)) }
   | TyAbbArgs EQ Type
       { fun ctx ->
-          let (b,ctx') = $1 [] ctx in
+          let (b, ctx') = $1 [] ctx in
           TyAbbBind(addbinders ($3 ctx') b, None) }
   | LEQ Type
       { fun ctx -> TyVarBind($2 ctx) }
@@ -373,7 +373,7 @@ ATerm :
           TmRecord($1, $2 ctx 1) }
   | LCURLY STAR Type COMMA Term RCURLY AS Type
       { fun ctx ->
-          TmPack($1,$3 ctx,$5 ctx,$8 ctx) }
+          TmPack($1, $3 ctx, $5 ctx, $8 ctx) }
   | TRUE
       { fun ctx -> TmTrue($1) }
   | FALSE

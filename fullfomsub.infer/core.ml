@@ -196,7 +196,7 @@ let rec tyeqv ctx tyS tyT =
   | (_, TyVar(i, _)) when istyabb ctx i ->
       tyeqv ctx tyS (gettyabb ctx i)
   | (TyVar(i, _), TyVar(j, _)) -> i=j
-  | (TyAll(tyX1, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
+  | (TyAll(tyX1, tyS1, tyS2, _), TyAll(_, tyT1, tyT2, _)) ->
        let ctx1 = addname ctx tyX1 in
        tyeqv ctx tyS1 tyT1 && tyeqv ctx1 tyS2 tyT2
   | (TyString, TyString) -> true
@@ -233,7 +233,7 @@ and kindof ctx tyT = match tyT with
             if (=) knK2 knK11 then knK12
             else error dummyinfo "parameter kind mismatch"
         | _ -> error dummyinfo "arrow kind expected")
-  | TyAll(tyX, tyT1, tyT2) ->
+  | TyAll(tyX, tyT1, tyT2, _) ->
       let ctx' = addbinding ctx tyX (TyVarBind tyT1) in
       if kindof ctx' tyT2 <> KnStar then error dummyinfo "Kind * expected";
       KnStar
@@ -271,7 +271,7 @@ let rec subtype ctx tyS tyT =
   | (TyVar(_, _), _) -> subtype ctx (promote ctx tyS) tyT
   | (_, TyTop) -> 
       true
-  | (TyAll(tyX1, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
+  | (TyAll(tyX1, tyS1, tyS2, _), TyAll(_, tyT1, tyT2, _)) ->
       (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) &&
       let ctx1 = addbinding ctx tyX1 (TyVarBind(tyT1)) in
       subtype ctx1 tyS2 tyT2
@@ -306,11 +306,11 @@ let rec join ctx tyS tyT =
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
-  | (TyAll(tyX, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
-      if not(subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then TyTop
+  | (TyAll(tyX, tyS1, tyS2, a1), TyAll(_, tyT1, tyT2, a2)) ->
+      if not ((=) a1 a2 && subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then TyTop
       else 
         let ctx' = addbinding ctx tyX (TyVarBind(tyT1)) in
-        TyAll(tyX, tyS1, join ctx' tyT1 tyT2)
+        TyAll(tyX, tyS1, join ctx' tyT1 tyT2, a1)
   | (TyRecord(fS), TyRecord(fT)) ->
       let labelsS = List.map (fun (li, _) -> li) fS in
       let labelsT = List.map (fun (li, _) -> li) fT in
@@ -335,12 +335,12 @@ and meet ctx tyS tyT =
   let tyS = simplifyty ctx tyS in
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
-  | (TyAll(tyX, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
-      if not (subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then
+  | (TyAll(tyX, tyS1, tyS2, a1), TyAll(_, tyT1, tyT2, a2)) ->
+      if not ((=) a1 a2 && subtype ctx tyS1 tyT1 && subtype ctx tyT1 tyS1) then
         raise Not_found
       else 
         let ctx' = addbinding ctx tyX (TyVarBind(tyT1)) in
-        TyAll(tyX, tyS1, meet ctx' tyT1 tyT2)
+        TyAll(tyX, tyS1, meet ctx' tyT1 tyT2, a1)
   | (TyRecord(fS), TyRecord(fT)) ->
       let labelsS = List.map (fun (li, _) -> li) fS in
       let labelsT = List.map (fun (li, _) -> li) fT in
@@ -372,14 +372,21 @@ let rec printTbl ctx tbl = match tbl with
   | [] -> ()
   | (a, b)::ls -> pr ("[table] " ^ string_of_int a ^ ": "); printty ctx b; pr "\n"; printTbl ctx ls
 
-let tblShift d tbl = List.map (fun (i, ty) -> (i+d, ty)) tbl
+let tblShift d tbl = List.map (fun (i, x, ty) -> (i+d, x, ty)) tbl
 
-let addToTbl tbl ty = (0, ty)::(tblShift 1 tbl)
+let addToTbl tbl x ty = (0, x, ty)::(tblShift 1 tbl)
 
 let rec substTbl ty tbl =
   match tbl with
   | [] -> ty
-  | (i, tyS)::ls -> substTbl (typeSubst tyS i ty) ls
+  | (i, tyX, tyS)::ls when tyX = "" -> substTbl (typeSubst tyS i ty) ls
+  | (i, tyX, tyS)::ls -> substTbl ty ls
+
+let rec typeauto ctx tbl ty =
+  match tbl with
+  | [] -> ty
+  | (i, tyX, _)::ls when tyX = "" -> typeauto ctx ls (typeShift (-1) ty)
+  | (i, tyX, tyS)::ls -> typeauto ctx ls (TyAll(tyX, tyS, ty, true))
 
 let rec infer ctx tyS tyT tbl =
   if tyeqv ctx tyS tyT then tbl else
@@ -387,36 +394,32 @@ let rec infer ctx tyS tyT tbl =
   let tyT = simplifyty ctx tyT in
   match (tyS, tyT) with
   | (_, TyVar(i, _)) ->
-      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n");
-      pr ("[debug] var: " ^ string_of_int i ^ "\n"); *)
-      List.map (fun (j, ty) -> if (=) i j then (j, meet ctx ty tyS) else (j, ty)) tbl
+      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n"); *)
+      (* pr ("[debug] var: " ^ string_of_int i ^ "\n"); *)
+      List.map (fun (j, x, ty) -> if (=) i j then (j, "", meet ctx ty tyS) else (j, x, ty)) tbl
   | (TyArr(tyS1, tyS2), TyArr(tyT1, tyT2)) ->
       infer ctx tyS2 tyT2 (infer ctx tyT1 tyS1 tbl)
-  | (TyAll(tyX1, tyS1, tyS2), TyAll(_, tyT1, tyT2)) ->
+  | (TyAll(tyX1, tyS1, tyS2, _), TyAll(_, tyT1, tyT2, _)) ->
       if not (tyeqv ctx tyS1 tyT1) then raise Not_found;
       let ctx' = addbinding ctx tyX1 (TyVarBind(tyT1)) in
       tblShift (-1) (infer ctx' tyS2 tyT2 (tblShift 1 tbl))
   | (_, _) ->
-      (* pr ("[debug] S: " ^ formatty ctx tyS ^ "\n");
-      pr ("[debug] T: " ^ formatty ctx tyT ^ "\n"); *)
+      (* pr ("[debug] S=" ^ formatty ctx tyS ^ ", T=" ^ formatty ctx tyT ^ "\n"); *)
       raise Not_found
 
-let rec typeofapp fi ctx tyS tyT tbl =
+let rec typeapp fi ctx tyS tyT tbl =
   match tyS with
   | TyArr(tyS1, tyS2) ->
       let tyT' = typeShift (List.length tbl) tyT in
       let tbl' = infer ctx tyT' tyS1 tbl in
       let tyS1' = substTbl tyS1 tbl' in
-      let tyS2' = substTbl tyS2 tbl' in
-      (* pr ("[debug] tyT: " ^ formatty ctx tyT' ^ "\n");
-      pr ("[debug] tyS1': " ^ formatty ctx tyS1' ^ "\n"); *)
-      if subtype ctx tyT' tyS1' then typeShift (-List.length tbl) tyS2'
-      else error fi ("parameter type mismatch, expected " ^ formatty ctx tyS1 ^ ", received " ^ formatty ctx tyT')
-  | TyAll(tyX1, tyS1, tyS2) ->
+      if not (subtype ctx tyT' tyS1') then error fi ("parameter type mismatch, expected " ^ formatty ctx tyS1 ^ ", received " ^ formatty ctx tyT');
+      typeauto ctx tbl' (substTbl tyS2 tbl')
+  | TyAll(tyX1, tyS1, tyS2, _) ->
       let binding = TyVarBind tyS1 in
       let ctx' = addbinding ctx tyX1 binding in
-      let tbl' = addToTbl tbl tyS1 in
-      typeofapp fi ctx' tyS2 tyT tbl'
+      let tbl' = addToTbl tbl tyX1 tyS1 in
+      typeapp fi ctx' tyS2 tyT tbl'
   | _ -> error fi ("expected arrow type, received " ^ formatty ctx tyS)
 
 let rec typeof ctx t =
@@ -430,7 +433,7 @@ let rec typeof ctx t =
   | TmApp(fi, t1, t2) ->
       let tyT1 = typeof ctx t1 in
       let tyT2 = typeof ctx t2 in
-      typeofapp fi ctx (lcst ctx tyT1) tyT2 []
+      typeapp fi ctx (lcst ctx tyT1) tyT2 []
   | TmAscribe(fi, t1, tyT) ->
       checkkindstar fi ctx tyT;
       let tyT1 = typeof ctx t1 in
@@ -439,11 +442,11 @@ let rec typeof ctx t =
   | TmTAbs(fi, tyX, tyT1, t2) ->
       let ctx = addbinding ctx tyX (TyVarBind(tyT1)) in
       let tyT2 = typeof ctx t2 in
-      TyAll(tyX, tyT1, tyT2)
+      TyAll(tyX, tyT1, tyT2, false)
   | TmTApp(fi, t1, tyT2) ->
       let tyT1 = typeof ctx t1 in
       (match lcst ctx tyT1 with
-         | TyAll(_, tyT11, tyT12) ->
+         | TyAll(_, tyT11, tyT12, _) ->
              if not(subtype ctx tyT2 tyT11) then
                   error fi ("type parameter type mismatch, expected " ^ formatty ctx tyT11 ^ ", received " ^ formatty ctx tyT2);
              typeSubstTop tyT2 tyT12
